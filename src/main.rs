@@ -1,39 +1,38 @@
 use clap::Parser;
 
-
 #[derive(Parser)]
-struct Cli{
-    path: String
+struct Cli {
+    path: String,
 }
 
-mod charcounter{
+mod charcounter {
     use std::collections::HashMap;
     pub struct Counter {
         files_text: u32,
         files_nontext: u32,
         directories: u32,
         chars_total: u64,
-        charmap: HashMap<char, u64>
+        charmap: HashMap<char, u64>,
     }
-    
+
     enum IncType {
         Text,
         NonText,
         Directory,
-        Char(char)
+        Char(char),
     }
-    
-    impl Counter {    
+
+    impl Counter {
         pub fn new() -> Counter {
             Counter {
                 files_text: 0,
                 files_nontext: 0,
                 directories: 0,
                 chars_total: 0,
-                charmap: HashMap::new()
+                charmap: HashMap::new(),
             }
         }
-    
+
         fn increment(&mut self, file_type: IncType) {
             match file_type {
                 IncType::Text => self.files_text += 1,
@@ -61,11 +60,10 @@ mod charcounter{
         pub fn files_nontext(&self) -> u32 {
             self.files_nontext
         }
-        
+
         pub fn directories(&self) -> u32 {
             self.directories
         }
-
     }
 
     // increment the counter for each character
@@ -77,22 +75,21 @@ mod charcounter{
 
     // read the file and return the contents as a string
     fn read_file(path: &std::path::Path, counter: &mut Counter) -> String {
-        let contents: Result<String, std::io::Error>= std::fs::read_to_string(path);
+        let contents: Result<String, std::io::Error> = std::fs::read_to_string(path);
         match contents {
             Ok(contents) => {
                 counter.increment(IncType::Text);
                 return contents;
-            },
+            }
             Err(_) => {
                 counter.increment(IncType::NonText);
                 return String::new();
             }
         }
-        
     }
 
     // reads the file and pass the contents to char_count
-    pub fn do_counting(path: &std::path::Path, counter: &mut Counter){
+    pub fn do_counting(path: &std::path::Path, counter: &mut Counter) {
         let contents: String = read_file(path, counter);
         char_count(&contents, counter);
     }
@@ -101,15 +98,14 @@ mod charcounter{
     pub fn walk_dir(path: &std::path::Path, counter: &mut Counter) {
         if path.is_dir() {
             counter.increment(IncType::Directory);
-            for entry in std::fs::read_dir(path)
-                .expect("read_dir call failed") {
+            for entry in std::fs::read_dir(path).expect("read_dir call failed") {
                 if let Ok(entry) = entry {
                     let path = entry.path();
                     if path.is_dir() {
                         walk_dir(&path, counter);
                     } else if path.is_file() {
                         do_counting(&path, counter);
-                    }else{
+                    } else {
                         continue;
                     }
                 }
@@ -118,7 +114,7 @@ mod charcounter{
     }
 }
 
-mod printer{
+mod printer {
     use super::charcounter::*;
     use cli_table::{format::Justify, print_stdout, Table, WithTitle};
 
@@ -129,8 +125,7 @@ mod printer{
         #[table(title = "Unicode", justify = "Justify::Left")]
         code: String,
         #[table(title = "Counts", justify = "Justify::Right")]
-        counts: u64
-        
+        counts: u64,
     }
 
     pub fn print_table(counter: &Counter) {
@@ -145,16 +140,13 @@ mod printer{
         }
         // sort the vector by counts
         counts_vec.sort_by(|a, b| b.counts.cmp(&a.counts));
-    
+
         match print_stdout(counts_vec.with_title()) {
             Ok(_) => (),
             Err(_) => println!("Error printing table"),
-            
         }
     }
 }
-
-
 
 fn main() {
     use charcounter::*;
@@ -186,13 +178,13 @@ fn main() {
     // printing the hashmap
     if counter.chars_total() > 0 {
         print_table(&counter);
-    } 
-    println!("{} text files, {} non-text files, {} directories, {} chars, {:.6} secs",
-                counter.files_text(),
-                counter.files_nontext(),
-                counter.directories(),
-                counter.chars_total(),
-                duration.as_secs_f64()
-                );
-    
+    }
+    println!(
+        "{} text files, {} non-text files, {} directories, {} chars, {:.6} secs",
+        counter.files_text(),
+        counter.files_nontext(),
+        counter.directories(),
+        counter.chars_total(),
+        duration.as_secs_f64()
+    );
 }
