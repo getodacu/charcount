@@ -19,7 +19,6 @@ mod charcounter {
         Text,
         NonText,
         Directory,
-        Char(char),
     }
 
     impl Counter {
@@ -38,13 +37,15 @@ mod charcounter {
                 IncType::Text => self.files_text += 1,
                 IncType::NonText => self.files_nontext += 1,
                 IncType::Directory => self.directories += 1,
-                IncType::Char(c) => {
-                    let count = self.charmap.entry(c).or_insert(0);
-                    *count += 1;
-                    self.chars_total += 1;
-                }
             }
         }
+
+        pub fn add_char(&mut self, c: char) {
+            let count = self.charmap.entry(c).or_insert(0);
+            *count += 1;
+            self.chars_total += 1;
+        }
+
         pub fn chars_total(&self) -> u64 {
             self.chars_total
         }
@@ -69,7 +70,7 @@ mod charcounter {
     // increment the counter for each character
     fn char_count(s: &str, counter: &mut Counter) {
         for c in s.chars() {
-            counter.increment(IncType::Char(c));
+            counter.add_char(c);
         }
     }
 
@@ -94,23 +95,41 @@ mod charcounter {
         char_count(&contents, counter);
     }
 
-    // recursively walk through a directory and for each file, do_counting
-    pub fn walk_dir(path: &std::path::Path, counter: &mut Counter) {
-        if path.is_dir() {
-            counter.increment(IncType::Directory);
-            for entry in std::fs::read_dir(path).expect("read_dir call failed") {
-                if let Ok(entry) = entry {
-                    let path = entry.path();
-                    if path.is_dir() {
-                        walk_dir(&path, counter);
-                    } else if path.is_file() {
-                        do_counting(&path, counter);
-                    } else {
-                        continue;
-                    }
-                }
+    use rayon::prelude::*;
+
+    impl Counter {
+        pub fn merge(&mut self, other: Counter) {
+            self.files_text += other.files_text;
+            self.files_nontext += other.files_nontext;
+            self.directories += other.directories;
+            self.chars_total += other.chars_total;
+            for (c, count) in other.charmap {
+                *self.charmap.entry(c).or_insert(0) += count;
             }
         }
+    }
+
+    pub fn process_path(path: &std::path::Path) -> Counter {
+        let mut counter = Counter::new();
+        if path.is_dir() {
+            counter.increment(IncType::Directory);
+            let entries: Vec<_> = std::fs::read_dir(path)
+                .expect("read_dir call failed")
+                .filter_map(|e| e.ok())
+                .collect();
+
+            let results: Vec<Counter> = entries
+                .par_iter()
+                .map(|entry| process_path(&entry.path()))
+                .collect();
+
+            for res in results {
+                counter.merge(res);
+            }
+        } else if path.is_file() {
+            do_counting(path, &mut counter);
+        }
+        counter
     }
 }
 
@@ -164,10 +183,8 @@ fn main() {
     //define the counter
     let mut counter = Counter::new();
 
-    if path.is_dir() {
-        walk_dir(path, &mut counter);
-    } else if path.is_file() {
-        do_counting(path, &mut counter);
+    if path.exists() {
+        counter = process_path(path);
     } else {
         println!("{} is not a valid path", path.display());
     }
